@@ -1,0 +1,46 @@
+name: Build APK from zip
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find and unzip the project
+        run: |
+          ZIP=$(find . -maxdepth 3 -iname '*.zip' -not -path './.git/*' | head -n 1)
+          if [ -z "$ZIP" ]; then echo "No .zip file found in the repo"; exit 1; fi
+          echo "Using $ZIP"
+          mkdir -p "$RUNNER_TEMP/src"
+          unzip -q "$ZIP" -d "$RUNNER_TEMP/src"
+          SETTINGS=$(find "$RUNNER_TEMP/src" -name 'settings.gradle*' | head -n 1)
+          if [ -z "$SETTINGS" ]; then echo "No settings.gradle(.kts) inside the zip"; exit 1; fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Build debug APK
+        run: |
+          cd "$PROJECT_DIR"
+          gradle assembleDebug --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp "$PROJECT_DIR"/app/build/outputs/apk/debug/*.apk out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: widgetly-debug-apk
+          path: out/*.apk
